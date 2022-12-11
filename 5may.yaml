@@ -1,0 +1,30 @@
+# YAML file defining how to narrow tracks down for ARCTERX
+
+# Lat/Lon box for plotting extents
+
+lonmin: 116
+lonmax: 146
+latmin:   5
+latmax:  30
+
+# Date to start search on, 5-May
+sMonth: 5
+sDOM: 5
+
+# minimum ending date for search, start+60 days
+eDuration: 60
+
+# Date to look backwards, start-30 days
+bDuration: 30
+
+# Initial search polygon
+
+startPoly: [
+  [121.7146412283249,23.05437221435311,-106.6715248499342],
+  [126.9058420145253,8.05775392731293,-2965.217422591878],
+  [134.7806092085566,8.189335823356421,-880.8893322070741],
+  [144.198065844555,13.64052056619961,-3740.638853369317],
+  [146.8913063923954,29.70560348640717,-5266.430938431171],
+  [130.9253294856693,29.21140436740642,-2533.080927657798],
+  [121.7146412283249,23.05437221435311,-106.6715248499342]
+  ]
