@@ -1,6 +1,8 @@
 .*~
 *~
-data
+data/
+images/
+.DS_Store
 tpw
 tpw.*
 tkw.*
