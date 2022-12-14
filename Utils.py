@@ -39,7 +39,7 @@ def mkGDF(fn:str, latmin:float, latmax:float, lonmin:float, lonmax:float) -> gpd
         return df
 
 def mkTracks(df:gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    b = df.groupby("track")
+    b = df.groupby("track", group_keys=True)
     return b.geometry.apply(lambda x: LineString(x.tolist()))
 
 def qMonthDOM(t:gpd.GeoDataFrame, month:int, DOM:int,
@@ -53,7 +53,8 @@ def qMonthDOM(t:gpd.GeoDataFrame, month:int, DOM:int,
 def pruneMonthDOM(df:gpd.GeoDataFrame, month:int, DOM:int, 
                   dOffset:np.timedelta64=np.timedelta64(0, "D")) -> gpd.GeoDataFrame:
     q = qMonthDOM(df.time.to_numpy(), month, DOM, dOffset)
-    tracks = np.unique(df.track[q])
+    (tracks, cnts) = np.unique(df.track[q], return_counts=True)
+    tracks = tracks[cnts > 1]
     q = np.isin(df.track, tracks)
     return df[q]
 
@@ -61,5 +62,6 @@ def pruneYear(df:gpd.GeoDataFrame, years:list) -> gpd.GeoDataFrame:
     if not years: return df # Nothing to do
 
     ty = df.time.to_numpy().astype("datetime64[Y]").astype(int) + 1970
-    tracks = np.unique(df.track[np.isin(ty, years)])
+    (tracks, cnts) = np.unique(df.track[np.isin(ty, years)], return_counts=True)
+    tracks = tracks[cnts > 1]
     return df[np.isin(df.track, tracks)]

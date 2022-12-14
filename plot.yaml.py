@@ -51,7 +51,7 @@ def mkGDF(fn:str, latmin:float, latmax:float, lonmin:float, lonmax:float) -> gpd
         return df
 
 def mkTracks(df:gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    b = df.groupby("track")
+    b = df.groupby("track", group_keys=True)
     return b.geometry.apply(lambda x: LineString(x.tolist()))
 
 def qMonthDOM(t:gpd.GeoDataFrame, month:int, DOM:int,
@@ -144,7 +144,7 @@ for fn in args.input:
 
     df[qStart].plot(ax=ax, color=color, markersize=40, marker='o', edgecolor='b')
     df[qBefore].plot(ax=ax, color=color, markersize=20.5, marker='*', edgecolor='b')
-    df2 = df.groupby("track").geometry.apply(lambda x: LineString(x.tolist()))
+    df2 = df.groupby("track", group_keys=True).geometry.apply(lambda x: LineString(x.tolist()))
     df2.plot(ax=ax, color=color, linewidth=1)
     break
     # df.plot(ax=ax, color="blue" if qCyclonic else "red", markersize=0.005)

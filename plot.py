@@ -10,7 +10,7 @@ import numpy as np
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from cartopy  import crs as ccrs
-import os.path
+import os
 import sys
 
 parser = ArgumentParser()
@@ -30,6 +30,8 @@ parser.add_argument("--duration", type=int, action="append", help="Additional da
 parser.add_argument("--year", type=int, action="append", help="Year(s) to filter on")
 parser.add_argument("--eez", type=str, default="eez_boundaries_v11.gpkg",
                     help="EEZ geopackage file to read")
+parser.add_argument("--png", type=str, help="Output png filename")
+parser.add_argument("--dpi", type=int, default=300, help="DPI of the plot for --png")
 args = parser.parse_args()
 
 sDOM = args.dom
@@ -44,7 +46,8 @@ lonmax = max(args.lonmin, args.lonmax)
 
 eez = gpd.read_file(args.eez) # Exclusive Economoic Zone boundaries
 
-ax = plt.axes(projection=ccrs.PlateCarree())
+fig = plt.figure(figsize=[6,5])
+ax = fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
 ax.set_extent([lonmin, lonmax, latmin, latmax])
 ax.gridlines(draw_labels=True)
 # eez.plot(ax=ax, color="black") # Everybody
@@ -66,14 +69,19 @@ tMax = None
 for fn in args.input:
     df = mkGDF(fn, latmin, latmax, lonmin, lonmax) # NetCDF -> collection of points
     print("Started with", df.size)
+    if df.empty: continue
     df = pruneYear(df, args.year)
     print("After --year filter", df.size)
+    if df.empty: continue
     df = pruneMonthDOM(df, sMonth, sDOM)
     print("After month/dom filter", df.size)
+    if df.empty: continue
     for duration in durations:
         # duration >0 -> alive afterwards, <0 -> beforehand
         df = pruneMonthDOM(df, sMonth, sDOM, duration) # Alive n days afterwords
         print("Duration", duration, "->", df.size)
+        if df.empty: break
+    if df.empty: continue
     tracks = mkTracks(df) # Create LineString for each track
     if df.qCyclonic.any():
         nCyclonic += tracks.size
@@ -96,4 +104,14 @@ if tMax: tMax = tMax.date()
 
 ax.set_title(f"blue-cyclonic({nCyclonic}), red-anticyclonic({nAnticyclonic}) {tMin} to {tMax}")
 ax.coastlines()
-plt.show()
+if args.png:
+    fn = os.path.abspath(os.path.expanduser(args.png))
+    dirname = os.path.dirname(fn)
+    if not os.path.isdir(dirname):
+        print("Creating", dirname)
+        os.makedirs(dirname, exist_ok=True, mode=0o755)
+
+    print("Saving", fn)
+    plt.savefig(fname=fn, dpi=args.dpi)
+else:
+    plt.show()
