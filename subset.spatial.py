@@ -11,6 +11,7 @@ from argparse import ArgumentParser
 import xarray as xr
 import numpy as np
 import os
+import time
 
 parser = ArgumentParser()
 parser.add_argument("input", nargs="+", type=str, help="Input GeoJSON files with AVISO data.")
@@ -47,29 +48,39 @@ for fn in args.input:
     (ofn, ext) = os.path.splitext(os.path.basename(fn))
     qCyclonic = False if ofn.find("nticyclonic") >= 0 else True
     ofn  = os.path.join(args.output, ofn + ".subset.spatial.nc")
+    stime = time.time()
     with xr.open_dataset(fn) as ds:
-        ds.longitude[ds.longitude <    0] += 360 # Walked across merdian westward
-        ds.longitude[ds.longitude >= 360] -= 360 # Walked across merdian eastward
+        ds.longitude[ds.longitude <    0] += 360 # Walked across the prime merdian westward
+        ds.longitude[ds.longitude >= 360] -= 360 # Walked across the prime merdian eastward
         ds.longitude[ds.longitude >= 180] -= 360 # Wrap to [-180,+180)
-        # Select based on lat limits
-        es = ds.sel(obs=ds.obs[np.logical_and(ds.latitude  >= latmin, ds.latitude  <= latmax)])
-        # Select on lon limits
-        es = es.sel(obs=es.obs[np.logical_and(es.longitude >= lonmin, es.longitude <= lonmax)])
-        # Retain the full track trajectory for any track that was ever within the lat/lon box
-        es = ds.sel(obs=ds.obs[np.isin(ds.track, np.unique(es.track))])
+        # within lat/lon box
+        q = np.logical_and(
+                np.logical_and( # Lat limits
+                    ds.latitude >= latmin,
+                    ds.latitude <= latmax,
+                    ),
+                np.logical_and( # Lon limits
+                    ds.longitude >= lonmin,
+                    ds.longitude <= lonmax,
+                    )
+                )
+        tracks = np.unique(ds.track[q]) # Unique track ids that have presence within lat/lon box
+        q = np.isin(ds.track, tracks) # Which observations to retain
         # Prune the dataset down
         a = xr.Dataset(
                 data_vars=dict(
                     qCyclonic=qCyclonic,
-                    time=es.time,
-                    track=es.track,
-                    latitude=es.latitude,
-                    longitude=es.longitude,
+                    time=ds.time[q],
+                    track=ds.track[q],
+                    latitude=ds.latitude[q],
+                    longitude=ds.longitude[q],
                     ),
                 coords=dict(
-                    obs=es.obs,
+                    obs=ds.obs[q],
                     ),
-                attrs=es.attrs,
+                attrs=ds.attrs,
                 )
-        print("Writing", os.path.basename(ofn), ds.obs.size, "->", a.obs.size)
+        print("Writing", os.path.basename(ofn), ds.obs.size, "->", a.obs.size, 
+              "dt {:.2f}".format(time.time() - stime))
         a.to_netcdf(ofn, encoding=encoding)
+        print("Took {:.2f} seconds".format(time.time() - stime))
