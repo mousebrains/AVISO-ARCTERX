@@ -5,7 +5,7 @@
 # Dec-2022, Pat Welch, pat@mousebrains.com
 
 from argparse import ArgumentParser
-from Utils import qEEZ, mkGDF, pruneMonthDOM, mkTracks, qMonthDOM, pruneYear
+from Utils import qEEZ, mkGDF, pruneMonthDOM, mkTracks, qMonthDOM, pruneYear, dropSinglePoints
 import numpy as np
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -81,6 +81,8 @@ for fn in args.input:
         df = pruneMonthDOM(df, sMonth, sDOM, duration) # Alive n days afterwords
         print("Duration", duration, "->", df.size)
         if df.empty: break
+    if df.empty: continue
+    df = dropSinglePoints(df)
     if df.empty: continue
     tracks = mkTracks(df) # Create LineString for each track
     if df.qCyclonic.any():
