@@ -53,8 +53,7 @@ def qMonthDOM(t:gpd.GeoDataFrame, month:int, DOM:int,
 def pruneMonthDOM(df:gpd.GeoDataFrame, month:int, DOM:int, 
                   dOffset:np.timedelta64=np.timedelta64(0, "D")) -> gpd.GeoDataFrame:
     q = qMonthDOM(df.time.to_numpy(), month, DOM, dOffset)
-    (tracks, cnts) = np.unique(df.track[q], return_counts=True)
-    tracks = tracks[cnts > 1]
+    tracks = np.unique(df[q].track)
     q = np.isin(df.track, tracks)
     return df[q]
 
@@ -62,6 +61,13 @@ def pruneYear(df:gpd.GeoDataFrame, years:list) -> gpd.GeoDataFrame:
     if not years: return df # Nothing to do
 
     ty = df.time.to_numpy().astype("datetime64[Y]").astype(int) + 1970
-    (tracks, cnts) = np.unique(df.track[np.isin(ty, years)], return_counts=True)
-    tracks = tracks[cnts > 1]
+    tracks = np.unique(df.track[np.isin(ty, years)])
     return df[np.isin(df.track, tracks)]
+
+def dropSinglePoints(df:gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    (tracks, cnts) = np.unique(df.track, return_counts=True)
+    q = cnts > 1
+    if not q.all():
+        df = df[np.isin(df.track, tracks[q])]
+
+    return df
