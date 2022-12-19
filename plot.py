@@ -63,9 +63,6 @@ eez[qEEZ(eez, "Overlapping claim area Taiwan / Japan / China")].plot(ax=ax, colo
 nCyclonic = 0
 nAnticyclonic = 0
 
-tMin = None
-tMax = None
-
 for fn in args.input:
     df = mkGDF(fn, latmin, latmax, lonmin, lonmax) # NetCDF -> collection of points
     print("Started with", df.size)
@@ -76,11 +73,13 @@ for fn in args.input:
     df = pruneMonthDOM(df, sMonth, sDOM)
     print("After month/dom filter", df.size)
     if df.empty: continue
+    print(np.unique(df.track))
     for duration in durations:
         # duration >0 -> alive afterwards, <0 -> beforehand
         df = pruneMonthDOM(df, sMonth, sDOM, duration) # Alive n days afterwords
         print("Duration", duration, "->", df.size)
         if df.empty: break
+        print(np.unique(df.track))
     if df.empty: continue
     df = dropSinglePoints(df)
     if df.empty: continue
@@ -98,13 +97,17 @@ for fn in args.input:
     for duration in durations:
         q = qMonthDOM(df.time.to_numpy(), sMonth, sDOM, duration)
         if q.any(): df[q].plot(ax=ax, edgecolor=color, markersize=25, marker='p')
-    tMin = df.time.min() if not tMin else min(tMin, df.time.min())
-    tMax = df.time.max() if not tMax else max(tMax, df.time.max())
 
-if tMin: tMin = tMin.date()
-if tMax: tMax = tMax.date()
+tit = f"blue-cyclonic({nCyclonic}), red-anticyclonic({nAnticyclonic})"
+if args.year:
+    tit += f" sdate {args.year:04d}{sMonth:02d}{sDOM:02d}"
+else:
+    tit += f" monDOM {sMonth:02d}{sDOM:02d}"
 
-ax.set_title(f"blue-cyclonic({nCyclonic}), red-anticyclonic({nAnticyclonic}) {tMin} to {tMax}")
+if args.duration:
+    tit += " " + ",".join(map(str, args.duration))
+
+ax.set_title(tit)
 ax.coastlines()
 if args.png:
     fn = os.path.abspath(os.path.expanduser(args.png))
