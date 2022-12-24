@@ -13,7 +13,6 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 from cartopy  import crs as ccrs
 import os
-import sys
 
 def dropSinglePoints(df:pd.DataFrame) -> pd.DataFrame:
     (tracks, cnts) = np.unique(df.track, return_counts=True)
