@@ -42,6 +42,20 @@ encoding["time"] = dict(zlib=True, complevel=9)
 encoding["track"] = encoding["time"]
 encoding["latitude"] = encoding["time"]
 encoding["longitude"] = encoding["time"]
+encoding["latitude_max"] = encoding["time"]
+encoding["longitude_max"] = encoding["time"]
+encoding["amplitude"] = encoding["time"]
+encoding["effective_area"] = encoding["time"]
+encoding["effective_contour_height"] = encoding["time"]
+encoding["effective_contour_shape_error"] = encoding["time"]
+encoding["effective_radius"] = encoding["time"]
+encoding["inner_contour_height"] = encoding["time"]
+encoding["observation_flag"] = encoding["time"]
+encoding["speed_area"] = encoding["time"]
+encoding["speed_average"] = encoding["time"]
+encoding["speed_contour_height"] = encoding["time"]
+encoding["speed_contour_shape_error"] = encoding["time"]
+encoding["speed_radius"] = encoding["time"]
 
 for fn in args.input:
     fn = os.path.abspath(os.path.expanduser(fn))
@@ -70,16 +84,15 @@ for fn in args.input:
         a = xr.Dataset(
                 data_vars=dict(
                     qCyclonic=qCyclonic,
-                    time=ds.time[q],
-                    track=ds.track[q],
-                    latitude=ds.latitude[q],
-                    longitude=ds.longitude[q],
                     ),
                 coords=dict(
                     obs=ds.obs[q],
                     ),
                 attrs=ds.attrs,
                 )
+        for key in encoding:
+            a[key] = ds[key][q]
+
         print("Writing", os.path.basename(ofn), ds.obs.size, "->", a.obs.size, 
               "dt {:.2f}".format(time.time() - stime))
         a.to_netcdf(ofn, encoding=encoding)

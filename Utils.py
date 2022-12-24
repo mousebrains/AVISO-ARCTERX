@@ -20,6 +20,7 @@ def qEEZ(df:gpd.GeoDataFrame, name:str) -> np.array:
 
 def mkGDF(fn:str, latmin:float, latmax:float, lonmin:float, lonmax:float) -> gpd.GeoDataFrame:
     fn = os.path.abspath(os.path.expanduser(fn))
+    qCyclonic = False if fn.find("nticyclonic") >= 0 else True
 
     with xr.open_dataset(fn) as ds:
         # Prune to the lat/lon box
@@ -29,7 +30,7 @@ def mkGDF(fn:str, latmin:float, latmax:float, lonmin:float, lonmax:float) -> gpd
 
         df = gpd.GeoDataFrame(
                 dict(
-                    qCyclonic = ds.qCyclonic.data,
+                    qCyclonic = qCyclonic,
                     track=ds.track,
                     time=ds.time,
                     geometry=MultiPoint(np.array((ds.longitude, ds.latitude)).T),
