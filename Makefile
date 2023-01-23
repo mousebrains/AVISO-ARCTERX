@@ -1,75 +1,28 @@
-# Build various images
-DIR = images
-INPUTSALL = tpw/*.spatial.nc
-INPUTSMETA = tpw/META*.spatial.nc
+# Parallized building of joined files and dataframe for classification
+#
+# Jan-2023, Pat Welch, pat@mousebrains.com
 
-MONTH = 5
-DOM = 5
+POLYGON = subset.polygon.yaml
 
-YEARSMETA = 1993 1994 1995 1996 1997 1998 1999
-YEARSMETA+= 2000 2001 2002 2003 2004 2005 2006 2007 2008 2009
-YEARSMETA+= 2010 2011 2012 2013 2014 2015 2016 2017
+MONTHDOM = 424
+PREDAYS = 10
 
-YEARSNRT   = 2018 2019 2020 2021 2022
+SRCDIR = data
+JOINDIR = tpw.joined.$(MONTHDOM)
+DFDIR = tpw.dataframe
 
-ALLMETA = $(patsubst %, $(DIR)/%.all.png, $(YEARSMETA))
-ALLNRT  = $(patsubst %, $(DIR)/%.all.png, $(YEARSNRT))
+SRCFILES = $(wildcard $(SRCDIR)/Eddy*.nc) $(wildcard $(SRCDIR)/META*long*.nc)
+JOINFILES = $(addprefix $(JOINDIR)/, $(notdir $(SRCFILES)))
 
-TwoMETA = $(patsubst %, $(DIR)/%.60.png, $(YEARSMETA))
-TwoNRT  = $(patsubst %, $(DIR)/%.60.png, $(YEARSNRT))
+DFFILE = $(DFDIR)/dataframe.$(MONTHDOM).nc
 
-ThreeMETA = $(patsubst %, $(DIR)/%.60.90.png, $(YEARSMETA))
-ThreeNRT  = $(patsubst %, $(DIR)/%.60.90.png, $(YEARSNRT))
+.PHONY: all
 
-FourMETA = $(patsubst %, $(DIR)/%.60.90.120.png, $(YEARSMETA))
-FourNRT  = $(patsubst %, $(DIR)/%.60.90.120.png, $(YEARSNRT))
+all: $(DFFILE)
 
-all: $(ALLMETA) $(ALLNRT) $(TwoMETA) $(TwoNRT) $(ThreeMETA) $(ThreeNRT) $(FourMETA) $(FourNRT)
+$(DFFILE):: make.dataframe.py
+$(DFFILE):: $(JOINFILES)
+	./make.dataframe.py --output=$@ --monthDOM=$(MONTHDOM) --preDays=$(PREDAYS) $^
 
-$(ALLMETA):
-	./plot.py --month=$(MONTH) --dom=$(DOM) $(INPUTSMETA) \
-		--year=$(patsubst $(DIR)/%.all.png,%, $@) \
-		--png='$@'
-
-$(ALLNRT):
-	./plot.py --month=$(MONTH) --dom=$(DOM) $(INPUTSALL) \
-		--year=$(patsubst $(DIR)/%.all.png,%, $@) \
-		--png='$@'
-
-$(TwoMETA):
-	./plot.py --month=$(MONTH) --dom=$(DOM) $(INPUTSMETA) \
-		--duration=60 \
-		--year=$(patsubst $(DIR)/%.60.png,%, $@) \
-		--png='$@'
-
-$(TwoNRT):
-	./plot.py --month=$(MONTH) --dom=$(DOM) $(INPUTSALL) \
-		--duration=60 \
-		--year=$(patsubst $(DIR)/%.60.png,%, $@) \
-		--png='$@'
-
-$(ThreeMETA):
-	./plot.py --month=$(MONTH) --dom=$(DOM) $(INPUTSMETA) \
-		--duration=60 --duration=90 \
-		--year=$(patsubst $(DIR)/%.60.90.png,%, $@) \
-		--png='$@'
-
-$(ThreeNRT):
-	./plot.py --month=$(MONTH) --dom=$(DOM) $(INPUTSALL) \
-		--duration=60 --duration=90 \
-		--year=$(patsubst $(DIR)/%.60.90.png,%, $@) \
-		--png='$@'
-
-
-$(FourMETA):
-	./plot.py --month=$(MONTH) --dom=$(DOM) $(INPUTSMETA) \
-		--duration=60 --duration=90 --duration=120 \
-		--year=$(patsubst $(DIR)/%.60.90.120.png,%, $@) \
-		--png='$@'
-
-$(FourNRT):
-	./plot.py --month=$(MONTH) --dom=$(DOM) $(INPUTSALL) \
-		--duration=60 --duration=90 --duration=120 \
-		--year=$(patsubst $(DIR)/%.60.90.120.png,%, $@) \
-		--png='$@'
-
+$(JOINDIR)/%.nc: $(SRCDIR)/%.nc $(POLYGON) make.joined.py
+	./make.joined.py --output=$(dir $@) --polygon=$(POLYGON) --monthDOM=$(MONTHDOM) $<

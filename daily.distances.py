@@ -6,6 +6,7 @@
 #
 # Dec-2022, Pat Welch, pat@mousebrains.com
 
+from GreatCircleDistance import greatCircleDistance
 from argparse import ArgumentParser
 import xarray as xr
 import pandas as pd
@@ -16,58 +17,6 @@ import os
 import time
 import sys
 
-def greatCircleDistance(lat1:np.array, lon1:np.array, lat2:np.array, lon2:np.array) -> np.array:
-    # Calculate the great circle distance between lat0/lon0 and lat1/lon1
-    # The expected error due to the oblate spheroid aspect of the earth is less than 1%
-
-    rMajor = 6378137          # WGS-84 semi-major axis in meters
-    f = 1/298.257223563       # WGS-84 flattening of the ellipsoid
-    rMinor = (1 - f) * rMajor # WGS-84 semi-minor axis in meters
-
-    lat1 = np.deg2rad(lat1.to_numpy()) # Degrees to radians as an numpy array instead of pandas
-    lat2 = np.deg2rad(lat2.to_numpy())
-    lon1 = np.deg2rad(lon1.to_numpy())
-    lon2 = np.deg2rad(lon2.to_numpy())
-
-    tanU1 = (1 - f) * np.tan(lat1) # Tangent of reduced latitude
-    tanU2 = (1 - f) * np.tan(lat2)
-    cosU1 = 1 / np.sqrt(1 + tanU1**2) # Cosine of reduced latitude
-    cosU2 = 1 / np.sqrt(1 + tanU2**2)
-    sinU1 = tanU1 * cosU1 # Sine of reduced latitude
-    sinU2 = tanU2 * cosU2
-
-    L = lon2 - lon1 # difference of longitudes
-
-    lambdaTerm = L # Initial guess of the lambda term
-
-    for cnt in range(10): # Iteration loop through Vincenty's inverse problem to get the distance
-        sinLambda = np.sin(lambdaTerm)
-        cosLambda = np.cos(lambdaTerm)
-        sinSigma = np.sqrt((cosU2 * sinLambda)**2 + (cosU1 * sinU2 - sinU1 * cosU2 * cosLambda)**2)
-        cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda
-        sigma = np.arctan2(sinSigma, cosSigma)
-        sinAlpha = cosU1 * cosU2 * sinLambda / np.sin(sigma)
-        cosAlpha2 = 1 - sinAlpha**2
-        cos2Sigma = cosSigma - 2 * sinU1 * sinU2 / cosAlpha2
-        C = f / 16 * cosAlpha2 * (4 + f * (4 - 3 * cosAlpha2))
-        lambdaPrime = L + (1 - C) * f * sinAlpha * (
-                sigma + 
-                C * sinAlpha * (cos2Sigma + C * cosSigma * (-1 + 2 * cos2Sigma**2)))
-        delta = np.abs(lambdaTerm - lambdaPrime)
-        lambdaTerm = lambdaPrime
-        if delta.max() < 1e-8: break
-
-    u2 = cosAlpha2 * (rMajor**2 - rMinor**2) / rMinor**2
-    A = 1 + u2/16384 * (4096 + u2 * (-768 + u2 * (320 - 175 * u2)))
-    B = u2/1024 * (256 + u2 * (-128 + u2 * (74 - 47 * u2)))
-    deltaSigma = B * sinAlpha * \
-            (cos2Sigma + B / 4 * \
-            (cosSigma * \
-             (-1 + 2 * cos2Sigma**2) - \
-             B/6 * cos2Sigma * (-3 + 4 * sinSigma**2) * (-3 + 4 * cos2Sigma**2))
-             )
-    return rMinor * A * (sigma - deltaSigma) # Distance on the elipsoid
-    
 def adjustLongitude(ds:xr.Dataset) -> xr.Dataset:
         ds.longitude[ds.longitude <    0] += 360 # Walked across the prime merdian westward
         ds.longitude[ds.longitude >= 360] -= 360 # Walked across the prime merdian eastward

@@ -22,7 +22,7 @@ from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 from sklearn.inspection import DecisionBoundaryDisplay
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from sklearn.metrics import classification_report
-import os
+import skops.io as sio
 
 parser = ArgumentParser()
 parser.add_argument("input", type=str, help="Input NetCDF files with dataframe data.")
@@ -30,6 +30,7 @@ parser.add_argument("--duration", type=int, default=75,
                     help="Number of days after measurement date to call an eddy long lived")
 parser.add_argument("--seed", type=int, default=123456789, help="Random number seed")
 parser.add_argument("--fracTest", type=float, default=0.25, help="Fraction to reserve for testing")
+parser.add_argument("--output", type=str, help="Model output filename")
 args = parser.parse_args()
 
 rng = np.random.default_rng(args.seed) 
@@ -90,6 +91,10 @@ clf = GridSearchCV(estimator=pipeline,
 clf.fit(xTrn, yTrn)
     # score = clf.score(xTst, yTst)
     # print(key, score)
+if args.output: # Save the model
+    obj = sio.dump(clf, args.output)
+
+
 clfParams = clf.best_params_;
 for k in sorted(clfParams): print(k, clfParams[k])
 yPred = clf.predict(xTst)

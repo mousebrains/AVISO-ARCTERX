@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 #
-# Extract the subset of tracks within the lat/lon box
+# Extract the subset of tracks within the lat/lon polygon
 # and output both to pared down NetCDF
 #
 # N.B. This does not handle crossing the anti-merdian!
@@ -8,8 +8,11 @@
 # Dec-2022, Pat Welch, pat@mousebrains.com
 
 from argparse import ArgumentParser
+import yaml
 import xarray as xr
 import numpy as np
+from shapely.geometry import Polygon, MultiPoint
+import geopandas as gpd
 import os
 import time
 
@@ -17,14 +20,8 @@ parser = ArgumentParser()
 parser.add_argument("input", nargs="+", type=str, help="Input GeoJSON files with AVISO data.")
 parser.add_argument("--output", "-o", type=str, default="tpw",
                     help="Directory for the output files")
-parser.add_argument("--latmin", type=float, default=-5,
-                    help="Southern latitude limit in decimal degrees")
-parser.add_argument("--latmax", type=float, default=40,
-                    help="Northern latitude limit in decimal degrees")
-parser.add_argument("--lonmin", type=float, default=116,
-                    help="Eastern longitude limit in decimal degrees")
-parser.add_argument("--lonmax", type=float, default=166,
-                    help="Western longitude limit in decimal degrees")
+parser.add_argument("--polygon", type=str, default="subset.polygon.yaml",
+                    help="YAML file with a polygon of lat/lon points")
 args = parser.parse_args()
 
 args.output = os.path.abspath(os.path.expanduser(args.output))
@@ -32,68 +29,56 @@ if not os.path.isdir(args.output):
     print("Making", args.output)
     os.makedirs(args.output, exist_ok=True, mode=0o755)
 
-latmin = min(args.latmin, args.latmax)
-latmax = max(args.latmin, args.latmax)
-lonmin = min(args.lonmin, args.lonmax)
-lonmax = max(args.lonmin, args.lonmax)
+with open(args.polygon, "r") as fp: polygon = yaml.safe_load(fp.read())
+if "polygon" not in polygon:
+    raise ValueError("polygon not defined in " + args.polygon)
+polygon = np.array(polygon["polygon"]) # Lat/Lon
+polygon = gpd.GeoDataFrame({"geometry": Polygon(polygon)}, index=[0], crs=4326) # WGS84
+bb = polygon.bounds
 
-encoding = {}
-encoding["time"] = dict(zlib=True, complevel=9)
-encoding["track"] = encoding["time"]
-encoding["latitude"] = encoding["time"]
-encoding["longitude"] = encoding["time"]
-encoding["latitude_max"] = encoding["time"]
-encoding["longitude_max"] = encoding["time"]
-encoding["amplitude"] = encoding["time"]
-encoding["effective_area"] = encoding["time"]
-encoding["effective_contour_height"] = encoding["time"]
-encoding["effective_contour_shape_error"] = encoding["time"]
-encoding["effective_radius"] = encoding["time"]
-encoding["inner_contour_height"] = encoding["time"]
-encoding["observation_flag"] = encoding["time"]
-encoding["speed_area"] = encoding["time"]
-encoding["speed_average"] = encoding["time"]
-encoding["speed_contour_height"] = encoding["time"]
-encoding["speed_contour_shape_error"] = encoding["time"]
-encoding["speed_radius"] = encoding["time"]
+print("Limits Lat", bb.miny[0], bb.maxy[0], "Lon", bb.minx[0], bb.maxx[0])
 
 for fn in args.input:
+    stime = time.time()
     fn = os.path.abspath(os.path.expanduser(fn))
-    (ofn, ext) = os.path.splitext(os.path.basename(fn))
-    qCyclonic = False if ofn.find("nticyclonic") >= 0 else True
-    ofn  = os.path.join(args.output, ofn + ".subset.spatial.nc")
+    (basename, ext) = os.path.splitext(os.path.basename(fn))
+    qCyclonic = basename.find("nticyclonic") < 0
+    qDelayedTime = basename.startswith("META")
+    ofn  = os.path.join(args.output, basename + ".subset.spatial.nc")
     stime = time.time()
     with xr.open_dataset(fn) as ds:
-        ds.longitude[ds.longitude <    0] += 360 # Walked across the prime merdian westward
-        ds.longitude[ds.longitude >= 360] -= 360 # Walked across the prime merdian eastward
-        ds.longitude[ds.longitude >= 180] -= 360 # Wrap to [-180,+180)
-        # within lat/lon box
-        q = np.logical_and(
-                np.logical_and( # Lat limits
-                    ds.latitude >= latmin,
-                    ds.latitude <= latmax,
-                    ),
-                np.logical_and( # Lon limits
-                    ds.longitude >= lonmin,
-                    ds.longitude <= lonmax,
-                    )
-                )
-        tracks = np.unique(ds.track[q]) # Unique track ids that have presence within lat/lon box
-        q = np.isin(ds.track, tracks) # Which observations to retain
-        # Prune the dataset down
-        a = xr.Dataset(
-                data_vars=dict(
-                    qCyclonic=qCyclonic,
-                    ),
-                coords=dict(
-                    obs=ds.obs[q],
-                    ),
-                attrs=ds.attrs,
-                )
-        for key in encoding:
-            a[key] = ds[key][q]
+        print("Initial", ds.obs.size, basename)
+        # Get the tracks that are inside the crude lat/lon box
+        a = ds.sel(obs=ds.obs[np.logical_and(ds.latitude >= bb.miny[0], ds.latitude <= bb.maxy[0])])
+        print("BB lat limits", a.obs.size)
 
-        print("Writing", os.path.basename(ofn), ds.obs.size, "->", a.obs.size, 
-              "dt {:.2f}".format(time.time() - stime))
-        a.to_netcdf(ofn, encoding=encoding)
-        print("Took {:.2f} seconds".format(time.time() - stime))
+        a.longitude[a.longitude <    0] += 360 # Walked across the prime merdian westward
+        a.longitude[a.longitude >= 360] -= 360 # Walked across the prime merdian eastward
+        a.longitude[a.longitude >= 180] -= 360 # Wrap to [-180,+180)
+
+        a = a.sel(obs=a.obs[np.logical_and(a.longitude >= bb.minx[0], a.longitude <= bb.maxx[0])])
+        print("BB lon limits", a.obs.size)
+
+        b = gpd.GeoDataFrame(
+                dict(
+                    track=a.track.data,
+                    geometry=MultiPoint(np.array([a.longitude.data, a.latitude.data]).T).geoms,
+                    ),
+                crs=4326)
+        tracks = np.unique(b.sjoin(polygon, how="right").track) # Tracks inside polygon
+        print("Tracks inside polygon", tracks.size)
+        ds = ds.sel(obs=ds.obs[np.isin(ds.track, tracks)])
+        print("Post track selection", ds.obs.size)
+
+        ds = ds.drop(("effective_contour_latitude", "effective_contour_longitude",
+                      "speed_contour_latitude", "speed_contour_longitude",
+                      "uavg_profile"))
+        ds = ds.assign({"qCyclonic": qCyclonic, "qDelayedTime": qDelayedTime})
+
+        for key in ds.keys(): 
+            ds[key].encoding = dict(zlib=True, complevel=3)
+
+        print("{:.2f}".format(time.time()-stime), "seconds to prune dataset")
+        print("Writing", os.path.basename(ofn), ds.obs.size)
+        ds.to_netcdf(ofn)
+        print("Took {:.2f} seconds to write file".format(time.time() - stime))

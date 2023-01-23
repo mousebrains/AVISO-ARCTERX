@@ -6,106 +6,56 @@
 # I'll use spatial and temporal correlation to reassign track numbers, skipping these gaps.
 # I won't interpolate dates, so there may be gaps in the dates within a track!
 #
-# The input is the output of subset.spatial.nc
+# The input is the output of make.subset.nc
 #
 # Dec-2022, Pat Welch, pat@mousebrains.com
 
+from GreatCircleDistance import greatCircleDistance
 from argparse import ArgumentParser
 import xarray as xr
-from cartopy  import crs as ccrs
-from shapely.geometry import Point, MultiLineString
-import geopandas as gpd
 import pandas as pd
 import numpy as np
+from shapely.geometry import Polygon, MultiPoint
+import geopandas as gpd
 import re
+import yaml
 import os
 import time
-import sys
 
-def greatCircleDistance(lat1:np.array, lon1:np.array, lat2:np.array, lon2:np.array,
-                        criteria:float=1e-8) -> np.array:
-    # Calculate the great circle distance between lat0/lon0 and lat1/lon1
-    # The expected error due to the oblate spheroid aspect of the earth is less than 1%
+def mkOutputFilename(dirname:str, fn:str, monthDOM:int) -> str:
+    idirname = os.path.dirname(fn)
+    if idirname != dirname: return os.path.join(dirname, os.path.basename(fn));
+    suffix = f".joined.{args.monthDOM:04d}.nc"
+    matches = re.match(r"^(.*).subset.spatial.nc$", fn)
+    if not matches:
+        (ofn, ext) = os.path.splitext(os.path.basename(fn))
+        return os.path.join(dirname, ofn + suffix)
+    return os.path.join(dirname, matches[1] + suffix)
 
-    rMajor = 6378137          # WGS-84 semi-major axis in meters
-    f = 1/298.257223563       # WGS-84 flattening of the ellipsoid
-    rMinor = (1 - f) * rMajor # WGS-84 semi-minor axis in meters
-
-    if isinstance(lat1, pd.Series):
-        lat1 = np.deg2rad(lat1.to_numpy()) # Degrees to radians as an numpy array instead of pandas
-        lat2 = np.deg2rad(lat2.to_numpy())
-        lon1 = np.deg2rad(lon1.to_numpy())
-        lon2 = np.deg2rad(lon2.to_numpy())
-    else:
-        lat1 = np.deg2rad(lat1) # Degrees to radians as an numpy array instead of pandas
-        lat2 = np.deg2rad(lat2)
-        lon1 = np.deg2rad(lon1)
-        lon2 = np.deg2rad(lon2)
-
-    tanU1 = (1 - f) * np.tan(lat1) # Tangent of reduced latitude
-    tanU2 = (1 - f) * np.tan(lat2)
-    cosU1 = 1 / np.sqrt(1 + tanU1**2) # Cosine of reduced latitude
-    cosU2 = 1 / np.sqrt(1 + tanU2**2)
-    sinU1 = tanU1 * cosU1 # Sine of reduced latitude
-    sinU2 = tanU2 * cosU2
-
-    dLon = lon2 - lon1 # difference of longitudes
-
-    lambdaTerm = dLon # Initial guess of the lambda term
-
-    for cnt in range(10): # Iteration loop through Vincenty's inverse problem to get the distance
-        sinLambda = np.sin(lambdaTerm)
-        cosLambda = np.cos(lambdaTerm)
-        sinSigma = np.sqrt((cosU2 * sinLambda)**2 + (cosU1 * sinU2 - sinU1 * cosU2 * cosLambda)**2)
-        cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda
-        sigma = np.arctan2(sinSigma, cosSigma)
-        sinAlpha = cosU1 * cosU2 * sinLambda / np.sin(sigma)
-        cosAlpha2 = 1 - sinAlpha**2
-        cos2Sigma = cosSigma - 2 * sinU1 * sinU2 / cosAlpha2
-        C = f / 16 * cosAlpha2 * (4 + f * (4 - 3 * cosAlpha2))
-        lambdaPrime = dLon + \
-                (1 - C) * f * sinAlpha * (
-                        sigma +
-                        C * sinSigma * (
-                            cos2Sigma + 
-                            C * cosSigma * (-1 + 2 * cos2Sigma**2)
-                            )
-                        )
-        delta = np.abs(lambdaTerm - lambdaPrime)
-        lambdaTerm = lambdaPrime
-        if delta.max() < criteria: break
-
-    u2 = cosAlpha2 * (rMajor**2 - rMinor**2) / rMinor**2
-    A = 1 + u2/16384 * (4096 + u2 * (-768 + u2 * (320 - 175 * u2)))
-    B = u2/1024 * (256 + u2 * (-128 + u2 * (74 - 47 * u2)))
-    deltaSigma = B * sinAlpha * (
-            cos2Sigma + 
-            B / 4 * (
-                cosSigma * (-1 + 2 * cos2Sigma**2) -
-                B/6 * cos2Sigma * (-3 + 4 * sinSigma**2) * (-3 + 4 * cos2Sigma**2)
-                )
-            )
-    return rMinor * A * (sigma - deltaSigma) # Distance on the elipsoid
-    
 def adjustLongitude(ds:xr.Dataset) -> xr.Dataset:
         ds.longitude[ds.longitude <    0] += 360 # Walked across the prime merdian westward
         ds.longitude[ds.longitude >= 360] -= 360 # Walked across the prime merdian eastward
         ds.longitude[ds.longitude >= 180] -= 360 # Wrap to [-180,+180)
         return ds
 
-def pruneBox(ds:xr.Dataset,
-             latMin:float, latMax:float,
-             lonMin:float, lonMax:float) -> xr.Dataset:
-    q = np.logical_and(
-            np.logical_and(
-                ds.latitude >= min(latMin, latMax),
-                ds.latitude <= max(latMin, latMax)),
-            np.logical_and(
-                ds.longitude >= min(lonMin, lonMax),
-                ds.longitude <= max(lonMin, lonMax)),
-            )
-    q = np.isin(ds.track, np.unique(ds.track[q])) # Which observations to retain
-    return ds.sel(obs=ds.obs[q])
+def prunePolygon(ds:xr.Dataset, polygon:gpd.GeoDataFrame) -> xr.Dataset:
+    bb = polygon.bounds
+
+    # Prune to course box
+    ds = ds.sel(obs=ds.obs[
+        np.logical_and(
+            np.logical_and(ds.latitude  >= bb.miny[0], ds.latitude  <= bb.maxy[0]),
+            np.logical_and(ds.longitude >= bb.minx[0], ds.longitude <= bb.maxx[0]),
+            )])
+
+    b = gpd.GeoDataFrame(
+            dict(
+                track=ds.track.data,
+                geometry=MultiPoint(np.array([ds.longitude.data, ds.latitude.data]).T).geoms,
+                ),
+            crs=4326)
+    tracks = np.unique(b.sjoin(polygon, how="right").track) # Tracks inside polygon
+    return ds.sel(obs=ds.obs[np.isin(ds.track, tracks)])
 
 def mkTrackEndPoints(df:pd.DataFrame) -> pd.DataFrame:
     imin = df.time.argmin()
@@ -120,15 +70,6 @@ def mkTrackEndPoints(df:pd.DataFrame) -> pd.DataFrame:
                 lon1 = df.longitude.iloc[imax],
                 lat1 = df.latitude.iloc[imax],
                 ))
-
-def findClosest(df:gpd.GeoDataFrame) -> pd.Series:
-    imin = np.argmin(df.distPerDay)
-    return pd.Series(
-            dict(
-                # trackLHS = df.trackLHS.iloc[imin],
-                trackRHS = df.trackRHS.iloc[imin],
-                ),
-            )
 
 def joinTracks(ds:xr.Dataset, monthOffset:np.timedelta64, domOffset: np.timedelta64,
                gapLength:np.timedelta64, maxRadius:float) -> xr.Dataset:
@@ -151,9 +92,9 @@ def joinTracks(ds:xr.Dataset, monthOffset:np.timedelta64, domOffset: np.timedelt
 
     for d in dates:
         (ds, trks, cnt) = appendToTracks(ds, trks, d, gapLength, maxRadius)
-        print(" append tracks", trks.shape[0], "iterations", cnt)
+        print(d, " append tracks", trks.shape[0], "iterations", cnt)
         (ds, trks, cnt) = prependToTracks(ds, trks, d, gapLength, maxRadius)
-        print("prepend tracks", trks.shape[0], "iterations", cnt)
+        print(d, "prepend tracks", trks.shape[0], "iterations", cnt)
 
     return ds
 
@@ -271,15 +212,9 @@ parser = ArgumentParser()
 parser.add_argument("input", nargs="+", type=str, help="Input GeoJSON files with AVISO data.")
 parser.add_argument("--output", "-o", type=str, default="tpw",
                     help="Directory for the output files")
-parser.add_argument("--latmin", type=float, default=-5,
-                    help="Southern latitude limit in decimal degrees")
-parser.add_argument("--latmax", type=float, default=40,
-                    help="Northern latitude limit in decimal degrees")
-parser.add_argument("--lonmin", type=float, default=116,
-                    help="Eastern longitude limit in decimal degrees")
-parser.add_argument("--lonmax", type=float, default=166,
-                    help="Western longitude limit in decimal degrees")
-parser.add_argument("--monthDOM", type=int, default=505,
+parser.add_argument("--polygon", type=str, default="subset.polygon.yaml",
+                    help="YAML file with a polygon of lat/lon points")
+parser.add_argument("--monthDOM", type=int, default=424,
                     help="Calendar day/month trucks must exist over.")
 parser.add_argument("--gapLength", type=int, default=2,
                     help="Maximum gap length to consider for connecting tracks")
@@ -296,32 +231,34 @@ monthOffset = np.timedelta64(np.floor(args.monthDOM / 100).astype(int) - 1, "M")
 domOffset = np.timedelta64(np.mod(args.monthDOM, 100) - 1, "D")
 gapLength = np.timedelta64(args.gapLength, "D")
 
-encoding = {}
-encoding["time"] = dict(zlib=True, complevel=9)
+with open(args.polygon, "r") as fp: polygon = yaml.safe_load(fp.read())
+if "polygon" not in polygon:
+    raise ValueError("polygon not defined in " + args.polygon)
+polygon = np.array(polygon["polygon"]) # Lat/Lon
+polygon = gpd.GeoDataFrame({"geometry": Polygon(polygon)}, index=[0], crs=4326) # WGS84
+bb = polygon.bounds
+
+print("Limits Lat", bb.miny[0], bb.maxy[0], "Lon", bb.minx[0], bb.maxx[0])
 
 for fn in args.input:
     fn = os.path.abspath(os.path.expanduser(fn))
-    fnBase = os.path.basename(fn)
-    (ofn, ext) = os.path.splitext(fnBase)
-    ofn  = os.path.join(args.output, ofn + ".joined.nc")
+    ofn  = mkOutputFilename(args.output, fn, args.monthDOM)
     with xr.open_dataset(fn) as ds:
-        ds = ds.drop(labels=[ # Drop two dimensional variables
-            "effective_contour_latitude", 
-            "effective_contour_longitude",
-            "speed_contour_latitude",
-            "speed_contour_longitude",
-            "uavg_profile",
-            ])
-        print("Working on", fnBase, ds.sizes)
+        print("Working on", os.path.basename(fn), ds.sizes)
         stime = time.time()
         ds = adjustLongitude(ds) # prime meridian crossover and wrap lon to [-180,180)
-        ds = pruneBox(ds, args.latmin, args.latmax, args.lonmin, args.lonmax)
+        ds = prunePolygon(ds, polygon)
         print(time.time()-stime, "seconds to prune", ds.sizes, np.unique(ds.track).size)
-        print(ds.speed_radius.data[-10:])
         stime = time.time()
         ds = joinTracks(ds, monthOffset, domOffset, gapLength, args.radius * 1000)
         print(time.time()-stime, "seconds to join tracks", np.unique(ds.track).size)
+        toDrop = set()
+        for key in sorted(ds.keys()):
+            if len(ds[key].dims) > 1:
+                toDrop.add(key)
+                continue
+            ds[key].encoding = dict(zlib=True, complevel=3)
+        ds = ds.drop(toDrop)
         stime = time.time()
         ds.to_netcdf(ofn)
-        print(time.time()-stime, "seconds to write", os.path.basename(ofn))
-        print(ds.speed_radius.data[-10:])
+        print(time.time()-stime, "seconds to write", os.path.basename(ofn), ds.obs.size)
