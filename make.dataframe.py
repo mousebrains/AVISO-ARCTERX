@@ -136,7 +136,7 @@ def mkDataSeries(ds:xr.Dataset, d:np.datetime64, preDays:np.timedelta64,
         data = ds[key].data
         sumY = data.sum()
         sumXY = (data * dt).sum()
-        m = (N * sumXY - sumX * sumY) / denom
+        m = (N * sumXY - sumX * sumY) / denom if denom != 0 else 0
 
         items[key] = data[-1] # Latest entry
         items[key + "_median"] = np.nanmedian(data)
