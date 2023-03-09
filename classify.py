@@ -42,6 +42,7 @@ classifiers = {
 #        "Nearest Neighbors 3": KNeighborsClassifier(3),
 #        "Nearest Neighbors 5": KNeighborsClassifier(5),
 #        "Nearest Neighbors 10": KNeighborsClassifier(10),
+#        "Nearest Neighbors 100": KNeighborsClassifier(100),
         # "Linear SVM": SVC(kernel="linear", C=0.025), # scalar divide
 #        "Poly SVM": SVC(kernel="poly", C=0.25),
 #        "Sigmoid SVM": SVC(kernel="sigmoid", C=0.25),
@@ -51,10 +52,10 @@ classifiers = {
         # Scalar divide
         # "Random Forest 2,5,sqrt": \
                 # RandomForestClassifier(max_depth=2, n_estimators=5, max_features="sqrt"),
-        "Random Forest 5,10,sqrt": \
-                RandomForestClassifier(max_depth=5, n_estimators=10, max_features="sqrt"),
-#        "Random Forest 10,20,sqrt": \
-#                RandomForestClassifier(max_depth=10, n_estimators=20, max_features="sqrt"),
+#        "Random Forest 5,10,sqrt": \
+#                RandomForestClassifier(max_depth=5, n_estimators=10, max_features="sqrt"),
+        "Random Forest 10,20,sqrt": \
+                RandomForestClassifier(max_depth=10, n_estimators=20, max_features="sqrt"),
 #        "Random Forest 15,30,sqrt": \
 #                RandomForestClassifier(max_depth=15, n_estimators=30, max_features="sqrt"),
 #        "Random Forest 20,40,sqrt": \
@@ -68,10 +69,17 @@ classifiers = {
         }
 
 df = mkDataFrame(args.input, args.duration)
+lastDate = df.date.max()
+print("Max Date", lastDate)
 df = shuffleDataFrame(rng, df) # Shuffle the rows randomly
 df["qAntiCyclonic"] = np.logical_not(df.qCyclonic)
+dfLast = df[df.date == lastDate]
+df = df[df.date != lastDate]
 (dfTrn, dfTst) = splitDataFrame(rng, df, args.fracTest)
-print("Shapes", df.shape, dfTrn.shape, dfTst.shape)
+nYearsTrn = np.unique(dfTrn.date.astype("datetime64[Y]")).shape[0]
+nYearsTst = np.unique(dfTst.date.astype("datetime64[Y]")).shape[0]
+print("Shapes", df.shape, dfTrn.shape, dfTst.shape, dfLast.shape)
+print("nYears", nYearsTrn, nYearsTst)
 
 
 items = []
@@ -85,9 +93,11 @@ for key in sorted(df.columns):
 
 xTrn = dfTrn[items]
 xTst = dfTst[items]
+xLast = dfLast[items]
 yTrn = dfTrn.qPersistent
 yTst = dfTst.qPersistent
-print("Persistant training", yTrn.sum(), yTrn.sum()/yTrn.size, yTst.sum(), yTst.sum()/yTst.size)
+print("Persistant fraction training", yTrn.sum(), yTrn.sum()/yTrn.size,
+      "testing", yTst.sum(), yTst.sum()/yTst.size)
 
 for key in classifiers:
     clf = make_pipeline(StandardScaler(), classifiers[key])
@@ -96,13 +106,14 @@ for key in classifiers:
     # score = clf.score(xTst, yTst)
     # print(key, score)
     yPred = clf.predict(xTst)
-    # print(classification_report(yTst, yPred))
+    print(classification_report(yTst, yPred))
     cm = confusion_matrix(yTst, yPred)
-    print("{:4.1f}% FP {:4.1f}% TP {:4.1f}% Positive {}".format(
+    print("{:4.1f}% FP {:4.1f}% TP {:4.1f}% Positive {} nPositive {}/year".format(
         cm[0,1] / (cm[0,0] + cm[0,1]) * 100,
         cm[1,1] / (cm[1,0] + cm[1,1]) * 100,
         cm[1,1] / (cm[0,1] + cm[1,1]) * 100,
-        key))
+        key,
+        (cm[0,1] + cm[1,1]) / nYearsTst))
 
     # print(key, "\n{:4d} {:4d} {:4.1f}% FP\n{:4d} {:4d} {:4.1f}% TP {:.1f}% Positive".format(
         # cm[0,0], cm[0,1],
@@ -114,4 +125,11 @@ for key in classifiers:
     # cmDisplay = ConfusionMatrixDisplay(cm).plot()
     # plt.title(key)
     # plt.show()
+
+    # Classify last date
+    yLast = clf.predict(xLast)
+    tgt = xLast[yLast != 0]
+    print("# of candidates for", lastDate.date(), "found", tgt.shape[0])
+    print(tgt.loc[:,("qAntiCyclonic", "latitude", "longitude", "amplitude", "distPerDay", "effective_area", "preDays", "speed_radius")])
+    # for item in sorted(tgt.columns): print(item)
 
