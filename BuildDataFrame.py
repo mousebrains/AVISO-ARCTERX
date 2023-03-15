@@ -17,11 +17,12 @@ def mkDataFrame(fn:str, minDuration:float) -> pd.DataFrame:
     minDuration = np.timedelta64(minDuration, "D");
     df["qPersistent"] = minDuration <= df.duration # Will it live at least this duration
     print("Persistent", 
-          df.qPersistent.sum(), 
+          df.qPersistent.sum(),
+          "of",
           df.shape[0], 
-          df.qPersistent.sum() / df.shape[0] * 100)
-
-    df["f"] = 2 * omega * np.sin(np.deg2rad(df.latitude)) # Coriolis parameter
+          "{:.2f}%".format(df.qPersistent.sum() / df.shape[0] * 100),
+          "{:.1f}/year".format(df.qPersistent.sum() / np.unique(df.date).size),
+          )
 
     # We don't know the thickness of the eddy, so we don't know the mass.
     # We'll assume a circular disk of speed_radius_mean.
