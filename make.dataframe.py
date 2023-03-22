@@ -12,6 +12,7 @@ from GreatCircleDistance import greatCircleDistance as gcDist
 import xarray as xr
 import pandas as pd
 import numpy as np
+from scipy.interpolate import interp1d
 import os
 
 def mkTrackEndPoints(ds:xr.Dataset, dates:np.array) -> xr.Dataset:
@@ -154,6 +155,15 @@ def mkDataFrames(ds:xr.Dataset, trks:pd.DataFrame,
             if series is not None: items.append(series)
     return pd.concat(items, ignore_index=True) if items else None
 
+def addONI(df:pd.DataFrame, fn:str) -> pd.DataFrame:
+    if not fn: return df
+
+    yr = np.array(df.date).astype("datetime64[Y]").astype(int) + 1970
+    with xr.open_dataset(fn) as ds:
+        f = interp1d(ds.year.data, ds.oni.data, kind="previous")
+        df["oni"] = f(yr)
+    return df
+
 parser = ArgumentParser()
 parser.add_argument("input", nargs="+", type=str,
                     help="Input NetCDF files with subsetted AVISO data.")
@@ -163,6 +173,7 @@ parser.add_argument("--monthDOM", type=int, default=424, help="Observation Month
 parser.add_argument("--preDays", type=int, default=10, help="Days prior to monthDOM to consider")
 parser.add_argument("--nrtMinYear", type=int, default=2019,
                     help="Use NRT data after this year, else DT data")
+parser.add_argument("--oni", type=str, default="oni.nc", help="ONI index")
 args = parser.parse_args()
 
 ofn = os.path.abspath(os.path.expanduser(args.output))
@@ -209,7 +220,9 @@ for fn in args.input:
 df = items[0] if len(items) == 1 else pd.concat(items, ignore_index=True)
 
 df = findNeighbors(df)
+df = addONI(df, args.oni)
 ds = xr.Dataset.from_dataframe(df).drop(("track"))
+
 
 for key in sorted(ds.keys()):
     ds[key].encoding = {"zlib": True, "complevel": 3}
