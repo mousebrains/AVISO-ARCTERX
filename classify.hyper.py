@@ -57,8 +57,42 @@ print("Shapes", df.shape, dfTrn.shape, dfTst.shape, dfLast.shape)
 print("nYears training", nYearsTrn, "testing", nYearsTst)
 
 items = []
+
+# Original
+# "qPersistent", "date", "duration", "distPerDay_slope"
+toDrop = (
+        "qPersistent",
+        "date",
+        "duration",
+        "distPerDay_slope",
+        "oni",
+        # "KE",
+        # "PE",
+        # "amplitude",
+        # "antiDistance",
+        # "cyclDistance",
+        # "distPerDay",
+        # "effective_area",
+        # "effective_contour_height",
+        # "effective_contour_shape_error",
+        # "effective_radius",
+        # "inner_contour_height",
+        # "latitude",
+        # "latitude_max",
+        # "longitude",
+        # "longitude_max",
+        # "preDays",
+        # "qAntiCyclonic",
+        # "qCyclonic",
+        # "speed_area",
+        # "speed_average",
+        # "speed_contour_height",
+        # "speed_contour_shape_error",
+        # "speed_radius",
+        )
+
 for key in sorted(df.columns):
-    if key in ("qPersistent", "date", "duration", "distPerDay_slope"): continue
+    if key in toDrop: continue
     # if key.endswith("_mean"): continue
     # if key.endswith("_median"): continue
     # if key.endswith("_sigma"): continue
