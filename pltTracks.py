@@ -49,7 +49,7 @@ parser.add_argument("--lonmin", type=float, default=115,
                     help="Eastern longitude limit in decimal degrees")
 parser.add_argument("--lonmax", type=float, default=150,
                     help="Western longitude limit in decimal degrees")
-parser.add_argument("--monthDOM", type=int, default=424, help="Month/Day a track must exist on")
+parser.add_argument("--monthDOM", type=int, default=120, help="Month/Day a track must exist on")
 parser.add_argument("--duration", type=int, default=75, help="End date constraints")
 parser.add_argument("--year", type=int, action="append", help="Year(s) to filter on")
 parser.add_argument("--eez", type=str, default="eez_boundaries_v11.gpkg",

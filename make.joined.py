@@ -216,7 +216,7 @@ parser.add_argument("--output", "-o", type=str, default="tpw",
                     help="Directory for the output files")
 parser.add_argument("--polygon", type=str, default="subset.polygon.yaml",
                     help="YAML file with a polygon of lat/lon points")
-parser.add_argument("--monthDOM", type=int, default=424,
+parser.add_argument("--monthDOM", type=int, default=120,
                     help="Calendar day/month trucks must exist over.")
 parser.add_argument("--gapLength", type=int, default=2,
                     help="Maximum gap length to consider for connecting tracks")

@@ -169,7 +169,7 @@ parser.add_argument("input", nargs="+", type=str,
                     help="Input NetCDF files with subsetted AVISO data.")
 parser.add_argument("--output", "-o", type=str, default="tkw/joint.nc",
                     help="Directory for the output files")
-parser.add_argument("--monthDOM", type=int, default=424, help="Observation Month/Day")
+parser.add_argument("--monthDOM", type=int, default=120, help="Observation Month/Day")
 parser.add_argument("--preDays", type=int, default=10, help="Days prior to monthDOM to consider")
 parser.add_argument("--nrtMinYear", type=int, default=2019,
                     help="Use NRT data after this year, else DT data")
