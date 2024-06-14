@@ -195,7 +195,7 @@ for fn in args.input:
     qCyclonic = basename.find("nticycl") < 0
     with xr.open_dataset(fn) as ds:
         if "cost_association" in ds:
-            ds = ds.drop("cost_association")
+            ds = ds.drop_vars("cost_association")
 
         for key in ds.keys(): attributes[key] = ds[key].attrs
 
@@ -221,7 +221,7 @@ df = items[0] if len(items) == 1 else pd.concat(items, ignore_index=True)
 
 df = findNeighbors(df)
 df = addONI(df, args.oni)
-ds = xr.Dataset.from_dataframe(df).drop(("track"))
+ds = xr.Dataset.from_dataframe(df).drop_vars(("track"))
 
 
 for key in sorted(ds.keys()):
