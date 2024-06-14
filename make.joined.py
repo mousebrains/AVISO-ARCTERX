@@ -100,7 +100,8 @@ def joinTracks(ds:xr.Dataset, monthOffset:np.timedelta64, domOffset: np.timedelt
 
 def appendToTracks(ds:xr.Dataset, trks:pd.DataFrame, d:np.datetime64,
                    gapLength:np.timedelta64, maxRadius:float,
-                   extra:np.timedelta64=np.timedelta64(1,"Y")) -> list:
+                   extra:np.timedelta64=np.timedelta64(52,"W"), # Non-ambigous ~ 1 year
+                   ) -> list:
     minGapLength = np.timedelta64(1,"D") # a delta time > 1, since 1 is no gap 
     maxGapLength = gapLength + minGapLength # delta time <= gapLength+1
 
@@ -155,7 +156,8 @@ def appendToTracks(ds:xr.Dataset, trks:pd.DataFrame, d:np.datetime64,
 
 def prependToTracks(ds:xr.Dataset, trks:pd.DataFrame, d:np.datetime64,
                     gapLength:np.timedelta64, maxRadius:float,
-                    extra:np.timedelta64=np.timedelta64(1,"Y")) -> list:
+                    extra:np.timedelta64=np.timedelta64(52,"W"), # Non-ambigous ~ 1 year
+                    ) -> list:
     minGapLength = np.timedelta64(1,"D") # a delta time > 1, since 1 is no gap 
     maxGapLength = gapLength + minGapLength # delta time <= gapLength+1
 
@@ -258,7 +260,7 @@ for fn in args.input:
                 toDrop.add(key)
                 continue
             ds[key].encoding = dict(zlib=True, complevel=3)
-        ds = ds.drop(toDrop)
+        ds = ds.drop_vars(toDrop)
         stime = time.time()
         ds.to_netcdf(ofn)
         print(time.time()-stime, "seconds to write", os.path.basename(ofn), ds.obs.size)
