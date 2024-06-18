@@ -160,6 +160,12 @@ def addONI(df:pd.DataFrame, fn:str) -> pd.DataFrame:
 
     yr = np.array(df.date).astype("datetime64[Y]").astype(int) + 1970
     with xr.open_dataset(fn) as ds:
+        print(fn)
+        print("yr", np.unique(yr))
+        print(ds)
+        print(ds.year.data)
+        print(np.max(ds.year.data))
+        print(ds.oni.data)
         f = interp1d(ds.year.data, ds.oni.data, kind="previous")
         df["oni"] = f(yr)
     return df
@@ -220,7 +226,7 @@ for fn in args.input:
 df = items[0] if len(items) == 1 else pd.concat(items, ignore_index=True)
 
 df = findNeighbors(df)
-df = addONI(df, args.oni)
+# df = addONI(df, args.oni)
 ds = xr.Dataset.from_dataframe(df).drop_vars(("track"))
 
 

@@ -4,7 +4,7 @@
 
 POLYGON = subset.polygon.yaml
 
-MONTHDOM = 120
+MONTHDOM = 201
 PREDAYS = 10
 
 SRCDIR = data
